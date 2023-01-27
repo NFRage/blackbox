@@ -39,13 +39,13 @@ bool BBGamePluginInstance::initialize()
 	createDirectories("ui");
 
 	if (EngineFactory->exists("NFS/ZDIR.BIN")) {
-		dbg::Log("");
-		dbg::Log("#################################################");
-		dbg::Log("#");
-		dbg::Log("# Beginning resource initalizing...");
-		dbg::Log("#");
-		dbg::Log("#################################################");
-		dbg::Log("");
+		dbg::Verbose("");
+		dbg::Verbose("#################################################");
+		dbg::Verbose("#");
+		dbg::Verbose("# Beginning resource initalizing...");
+		dbg::Verbose("#");
+		dbg::Verbose("#################################################");
+		dbg::Verbose("");
 		dbg::Log("The \"NFS/ZDIR.BIN\" file was found. Trying to work with packed database...");
 		if (!UnpackXboxData()) {
 			return false;
@@ -60,13 +60,13 @@ bool BBGamePluginInstance::initialize()
 			return false;
 		}
 
-		dbg::Log("");
-		dbg::Log("#################################################");
-		dbg::Log("#");
-		dbg::Log("# Resources initializing completed.");
-		dbg::Log("#");
-		dbg::Log("#################################################");
-		dbg::Log("");
+		dbg::Verbose("");
+		dbg::Verbose("#################################################");
+		dbg::Verbose("#");
+		dbg::Verbose("# Resources initializing completed.");
+		dbg::Verbose("#");
+		dbg::Verbose("#################################################");
+		dbg::Verbose("");
 
 		if (!LoadChunkedFile("GLOBAL/GLOBALA.BUN")) {
 			return false;

@@ -50,6 +50,12 @@ extern BLACKBOX_PLUGIN_API nfr::api::IEngineFactory* EngineFactory;
 namespace bb::dbg
 {
 	template<typename... Args>
+	inline void Verbose(const nfr::api::string_view& fmt, Args&&... args)
+	{
+		GameLogger->trace(fmt, std::forward<Args>(args)...);
+	}
+
+	template<typename... Args>
 	inline void Log(const nfr::api::string_view& fmt, Args&&... args)
 	{
 		GameLogger->info(fmt, std::forward<Args>(args)...);

@@ -20,6 +20,14 @@
 #pragma once
 #include <cstdint>
 
+#ifdef _WIN32
+#define BYTESWAP_SHORT(x) _byteswap_ushort(x)
+#define BYTESWAP_LONG(x) _byteswap_ulong(x)
+#else
+#define BYTESWAP_SHORT(x) __builtin_bswap16(x)
+#define BYTESWAP_LONG(x) __builtin_bswap32(x)
+#endif
+
 #define ALIGN_VALUE(x, align)  ((x + (align-1)) & (~(align-1)))
 
 enum class ENFSChunkId : std::uint32_t
@@ -119,6 +127,9 @@ enum class ENFSChunkId : std::uint32_t
 	DDSTexture = 0x30300200, // 0x80 Modular
 	ColorCube = 0x30300201, // 0x10 Modular
 	PCAWater0 = 0x30300300, // 0x80 Modular
+	PCAWeightsData = 0x30300301,
+	PCAMeanData = 0x30300302,
+	PCAFramesData = 0x30300303,
 	TPK_InfoPart1 = 0x33310001, // 0x08 Actual
 	TPK_InfoPart2 = 0x33310002, // 0x0C Actual
 	TPK_InfoPart3 = 0x33310003, // varies
@@ -163,6 +174,9 @@ enum class ENFSChunkId : std::uint32_t
 	GeometryHeader = 0x80134001, // varies
 	GeometryData = 0x80134010, // varies
 	ELights = 0x80135000, // varies
+	LightPack = 0x00135001,
+	AABBTree = 0x00135002,
+	LightArray = 0x00135003,
 	SpecialEffects = 0xB0300100, // 0x80 Modular
 	PCAWeights = 0xB0300300, // 0x80 Modular
 	TPK_Blocks = 0xB3300000, // 0x80 Modular
@@ -171,7 +185,6 @@ enum class ENFSChunkId : std::uint32_t
 	TPK_AnimBlock = 0xB3312004, // varies
 	TPK_DataBlock = 0xB3320000, // 0x80 Modular
 };
-
 
 class TexturePack;
 
@@ -217,8 +230,6 @@ struct SolidListHeader
 	//bPList<TexturePack> TexturePackList;
 	//bPList<eTextureEntry> DefaultTextureList;
 };
-
-
 
 struct TexturePlatInfo
 {
@@ -348,3 +359,319 @@ struct TextureVRAMDataHeader
 	0x134B04: 128
 	0x134B01: 128
 */
+
+#define MAX_FONT_STATES 24
+
+struct EventSysPipeGroup
+{
+	std::uint32_t Tag;
+	std::uint32_t GroupCount : 27;
+	std::uint32_t GroupSorted : 1;
+	std::uint32_t DataSorted : 1;
+	std::uint32_t Allocated : 1;
+	std::uint32_t Embedded : 1;
+	std::uint32_t Indexed : 1;
+	std::uint32_t DataCount;
+	std::uint32_t Offset;
+};
+
+struct CIPHeader
+{
+	int Magic;
+	int USize;
+	int CSize;
+	int UPos;
+	int CPos;
+	char UnusedPadding[4];
+};
+
+struct OldEngineFont
+{
+	char Signature[4];
+	std::uint32_t Size;
+	std::uint16_t Version;
+	std::uint16_t Num;
+	std::int32_t Flags;
+	std::int8_t CenterX;
+	std::int8_t CenterY;
+	std::uint8_t Ascent;
+	std::uint8_t Descent;
+	std::int32_t GlyphTbl;
+	std::int32_t KernTbl;
+	std::int32_t Shape;
+	std::int32_t States[MAX_FONT_STATES];
+
+	void EndianSwap()
+	{
+		Size = BYTESWAP_LONG(Size);
+		Version = BYTESWAP_SHORT(Version);
+		Num = BYTESWAP_SHORT(Num);
+		Flags = BYTESWAP_SHORT(Flags);
+		GlyphTbl = BYTESWAP_LONG(GlyphTbl);
+		KernTbl = BYTESWAP_LONG(KernTbl);
+		Shape = BYTESWAP_LONG(Shape);
+		for (std::int32_t& state : States) {
+			state = BYTESWAP_LONG(state);
+		}
+	}
+};
+
+struct EngineFont
+{
+	char FontName[256];
+	char TextureName[256];
+	OldEngineFont Font;
+};
+
+struct FontDescription
+{
+	std::string Name;
+	std::string TextureName;
+	std::int32_t Height;
+};
+
+struct MaterialInfo
+{
+	float DiffusePower;
+	float DiffuseClamp;
+	float DiffuseFlakes;
+	float DiffuseVinylScale;
+	float DiffuseMinScale;
+	float DiffuseMinR;
+	float DiffuseMinG;
+	float DiffuseMinB;
+	float DiffuseMaxScale;
+	float DiffuseMaxR;
+	float DiffuseMaxG;
+	float DiffuseMaxB;
+	float DiffuseMinA;
+	float DiffuseMaxA;
+	float SpecularPower;
+	float SpecularFlakes;
+	float SpecularVinylScale;
+	float SpecularMinScale;
+	float SpecularMinR;
+	float SpecularMinG;
+	float SpecularMinB;
+	float SpecularMaxScale;
+	float SpecularMaxR;
+	float SpecularMaxG;
+	float SpecularMaxB;
+	float Specular1Power;
+	float Specular1Flakes;
+	float Specular1VinylScale;
+	float Specular1MinScale;
+	float Specular1MinR;
+	float Specular1MinG;
+	float Specular1MinB;
+	float Specular1MaxScale;
+	float Specular1MaxR;
+	float Specular1MaxG;
+	float Specular1MaxB;
+	float EnvmapPower;
+	float EnvmapClamp;
+	float EnvmapVinylScale;
+	float EnvmapMinScale;
+	float EnvmapMinR;
+	float EnvmapMinG;
+	float EnvmapMinB;
+	float EnvmapMaxScale;
+	float EnvmapMaxR;
+	float EnvmapMaxG;
+	float EnvmapMaxB;
+	float VinylLuminanceMinScale;
+	float VinylLuminanceMaxScale;
+	float MultiTextured;
+};
+
+struct MaterialStruct
+{
+	char PlatInterfaceOffset[4];
+	char NodeOffset[8];
+	std::uint32_t NameHash;
+	std::uint32_t Version;
+	char Name[64];
+	MaterialInfo Data;
+};
+
+struct LightPack
+{
+	char NodeOffset[8];
+	std::int16_t Version;
+	char EndianSwapped;
+	char Pad;
+	std::int32_t ScenerySectionNumber;
+	char LightTree[4];
+	std::int32_t NumTreeNodes;
+	char LightArray[4];
+	std::int32_t NumLights;
+};
+
+struct AABBTree
+{
+	char NodeArray[4];
+	std::int16_t NumLeafNodes;
+	std::int16_t NumParentNodes;
+	std::int16_t TotalNodes;
+	std::int16_t Depth;
+	std::int32_t pad1;
+};
+
+struct ePcaChannelInfo
+{
+	std::uint8_t Type;
+	std::uint8_t NumWeights;
+	std::uint16_t VectorBufferOffset;
+	std::uint16_t WeightOffset;
+	std::uint32_t ParamHandle;
+};
+
+struct ePcaWeights
+{
+	std::uint32_t NameHash;
+	std::uint16_t NumFrames;
+	std::uint16_t NumWeightsPerFrame;
+	std::uint16_t NumSamples;
+	std::uint16_t NumChannels;
+	ePcaChannelInfo PcaChannelInfo[9];
+	std::uint32_t Mean;
+	std::uint32_t Frames;
+};
+
+struct GameLight
+{
+	std::uint32_t NameHash;
+	std::uint8_t Type;
+	std::uint8_t AttenuationType;
+	std::uint8_t Shape;
+	std::uint8_t State;
+	std::uint32_t ExcludeNameHash;
+	std::uint32_t Colour;
+	float PositionX;
+	float PositionY;
+	float PositionZ;
+	float Size;
+	float DirectionX;
+	float DirectionY;
+	float DirectionZ;
+	float Intensity;
+	float FarStart;
+	float FarEnd;
+	float Falloff;
+	std::int16_t ScenerySectionNumber;
+	char Name[34];
+};
+
+struct EngineAABBTree
+{
+	std::int16_t NumLeafNodes;
+	std::int16_t NumParentNodes;
+	std::int16_t TotalNodes;
+	std::int16_t Depth;
+};
+
+struct EngineLightPack
+{
+	EngineAABBTree aabb = {};
+	std::int32_t SectionNumber;
+	std::int32_t TreeNodesCount;
+	std::int32_t LightsCount;
+
+	EngineLightPack(EngineLightPack&&) = default;
+	EngineLightPack(std::int32_t InSectionNumber, std::int32_t InTreeNodesCount, std::int32_t InLightsCount)
+		: SectionNumber(InSectionNumber), TreeNodesCount(InTreeNodesCount), LightsCount(InLightsCount) {}
+};
+
+struct FrontendPackage
+{
+	std::uint32_t Hash;
+	std::string Name;
+	std::vector<char> Data;
+};
+
+enum class QuickSplineEndPointType : std::int32_t
+{
+	Loop,
+	Line,
+	Extrapolated
+};
+
+enum class QuickSplineBasisType : std::int32_t
+{
+	Overhauser
+};
+
+struct QuickSpline
+{
+	std::uint32_t Hash;
+	QuickSplineEndPointType EndPointType;
+	QuickSplineBasisType BasisType;
+	float MaxParam;
+	float MinParam;
+	float Length;
+	std::int8_t ControlPointsDirty;
+	std::int8_t BufferWasAllocated;
+	std::int8_t MinControlPoints;
+	std::uint16_t MaxControlPoints;
+	std::uint16_t NumControlPoints;
+};
+
+struct JLZPackHeader
+{
+	char MagicWord[4];
+	char FirstFlag;
+	char SecondFlag;
+	char Padding[2];
+	std::uint32_t UncompressedSize;
+	std::uint32_t CompressedSize;
+};
+
+struct aVector3
+{
+	float x;
+	float y;
+	float z;
+	float pad;
+};
+
+enum class CarUsageType : std::int32_t
+{
+	CAR_USAGE_TYPE_RACING = 0x0,
+	CAR_USAGE_TYPE_COP = 0x1,
+	CAR_USAGE_TYPE_TRAFFIC = 0x2,
+	CAR_USAGE_TYPE_WHEELS = 0x3,
+	CAR_USAGE_TYPE_UNIVERSAL = 0x4,
+};
+
+struct CarTypeInfo
+{
+	char CarTypeName[16];
+	char BaseModelName[16];
+	char GeometryFilename[32];
+	char ManufacturerName[16];
+	std::uint32_t CarTypeNameHash;
+	float HeadlightFOV;
+	char padHighPerformance;
+	char NumAvailableSkinNumbers;
+	char WhatGame;
+	char ConvertableFlag;
+	char WheelOuterRadius;
+	char WheelInnerRadiusMin;
+	char WheelInnerRadiusMax;
+	char pad0;
+	aVector3 HeadlightPosition;
+	aVector3 DriverRenderingOffset;
+	aVector3 InCarSteeringWheelRenderingOffset;
+	int Type;
+	CarUsageType UsageType;
+	unsigned int CarMemTypeHash;
+	char MaxInstances[5];
+	char WantToKeepLoaded[5];
+	char pad4[2];
+	float MinTimeBetweenUses[5];
+	char AvailableSkinNumbers[10];
+	char DefaultSkinNumber;
+	char Skinnable;
+	int Padding;
+	int DefaultBasePaint;
+};

@@ -22,8 +22,8 @@
 const std::unordered_map<std::uint32_t, std::string_view> NfsChunkIdMap =
 {
 	{ 0x00000000, "Empty"					},
-	{ 0x00030201, "FEngFont"				},
-	{ 0x00030203, "FEngFiles"				},
+	{ 0x00030201, "FEFont"					},
+	{ 0x00030203, "FEFiles"					},
 	{ 0x00030210, "FNGCompress"				},
 	{ 0x00030220, "PresetRides"				},
 	{ 0x00030230, "MagazinesFrontend"		},

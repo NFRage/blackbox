@@ -19,23 +19,64 @@
 *****************************************************************/
 #include "blackbox_pch.h"
 
-#ifdef _WIN32
-#define BYTESWAP_SHORT(x) _byteswap_ushort(x)
-#define BYTESWAP_LONG(x) _byteswap_ulong(x)
-#else
-#define BYTESWAP_SHORT(x) __builtin_bswap16(x)
-#define BYTESWAP_LONG(x) __builtin_bswap32(x)
-#endif
-
 namespace bb
 {
 
-void ProcessTextureLoadAnimationChunk(aChunk* anumChunk)
+nfr::api::binary_hash_map<FrontendPackage> FEPackages;
+nfr::api::binary_hash_map<MaterialInfo> MaterialsMap;
+nfr::api::binary_hash_map<GameLight> LightsMap;
+std::vector<EngineLightPack> EngineLightsMap;
+
+void 
+JLZDecompress(std::uint8_t* input, std::uint8_t* output, std::int32_t inputLength, std::int32_t outputLength)
+{
+	// Appapted to C++ code from https://github.com/MWisBest/OpenNFSTools/blob/master/LibNFS/Compression/JDLZ.cs
+    int flags1 = 1, flags2 = 1;
+    int t = 0, length = 0;
+    int inPos = 16, outPos = 0;
+
+    while ((inPos < inputLength) && (outPos < outputLength)) {
+        if (flags1 == 1) {
+            flags1 = input[inPos++] | 0x100;
+        }
+        
+        if (flags2 == 1) {
+            flags2 = input[inPos++] | 0x100;
+        }
+
+        if ((flags1 & 1) == 1) {
+            if ((flags2 & 1) == 1) {
+                length = (input[inPos + 1] | ((input[inPos] & 0xF0) << 4)) + 3;
+                t = (input[inPos] & 0x0F) + 1;
+            } else {
+                t = (input[inPos + 1] | ((input[inPos] & 0xE0) << 3)) + 17;
+                length = (input[inPos] & 0x1F) + 3;
+            }
+
+            inPos += 2;
+            for (int i = 0; i < length; ++i) {
+                output[outPos + i] = output[outPos + i - t];
+            }
+
+            outPos += length;
+            flags2 >>= 1;
+        } else {
+            if (outPos < outputLength) {
+                output[outPos++] = input[inPos++];
+            }
+        }
+        
+        flags1 >>= 1;
+    }
+}
+
+void 
+ProcessTextureLoadAnimationChunk(aChunk* anumChunk)
 {
 	aChunk* nextChunk = anumChunk + 1;
 	aChunk* lastChunk = (aChunk*)((char*)anumChunk + anumChunk->Size + 8);
 	while (nextChunk != lastChunk) {
-		dbg::Log("Processing anim chunk...");
+		dbg::Verbose("Processing anim chunk...");
 		if (nextChunk->Id != static_cast<std::uint32_t>(ENFSChunkId::TPK_AnimBlock)) {
 			dbg::Warning("Unexpected chunkId {:#06x} in texture animation chunk. Skipping this one...", nextChunk->Id);
 			nextChunk = (aChunk*)((char*)nextChunk + nextChunk->Size + 8);
@@ -46,7 +87,13 @@ void ProcessTextureLoadAnimationChunk(aChunk* anumChunk)
 	}
 }
 
-bool ProcessTexturePackHeaderChunk(aChunk* chunkData, TexturePackHeader& outHeader, TexturePlatInfo& outPlatInfo, std::vector<TextureInfo>& texturesInfo)
+bool
+ProcessTexturePackHeaderChunk(
+	aChunk* chunkData,
+	TexturePackHeader& outHeader, 
+	TexturePlatInfo& outPlatInfo,
+	std::vector<TextureInfo>& texturesInfo
+)
 {
 	static const char verifyBuffer[12] = {};
 	nfr::api::binary_hash_set hashesStorage;
@@ -61,70 +108,71 @@ bool ProcessTexturePackHeaderChunk(aChunk* chunkData, TexturePackHeader& outHead
 	bool bEndianSwapped = false;
 
 	while (nextChunk != lastChunk) {
-		const std::string_view& chunkName = (NfsChunkIdMap.find(nextChunk->Id) != NfsChunkIdMap.end() ? NfsChunkIdMap.at(nextChunk->Id) : "");
-		dbg::Log("    Processing chunk {}...", chunkName);
-		ENFSChunkId currentChunk = static_cast<ENFSChunkId>(nextChunk->Id);
-		if (currentChunk == ENFSChunkId::TPK_InfoPart1) {
+		const char* chunkName = (NfsChunkIdMap.find(nextChunk->Id) != NfsChunkIdMap.end() ? NfsChunkIdMap.at(nextChunk->Id).data() : "");
+		dbg::Verbose("    Processing chunk {}...", chunkName);
+
+		switch (static_cast<ENFSChunkId>(nextChunk->Id)) {
+		case ENFSChunkId::TPK_InfoPart1: {
 			TexturePackHeader* texturePackHeader = (TexturePackHeader*)(nextChunk + 1);
 			std::memcpy(&outHeader, texturePackHeader, sizeof(TexturePackHeader));
-			dbg::Log("        Found package name {:#06x} ({})", texturePackHeader->FilenameHash, texturePackHeader->Name);
-		} else {
-			switch (currentChunk) {
-			case ENFSChunkId::TPK_InfoPart2: {
-				TextureIndexEntry* textureIndexEntry = (TextureIndexEntry*)(nextChunk + 1);
-				textureIndexesCount = (nextChunk->Size / sizeof(TextureIndexEntry));
-				for (std::uint32_t i = 0; i < textureIndexesCount; i++) {
-					dbg::Log("        Found entry hash {:#06x} (padding: {})", textureIndexEntry->NameHash, textureIndexEntry->Padding);
-					hashesStorage.insert(textureIndexEntry->NameHash);
-					textureIndexEntry++;
+			dbg::Verbose("        Found package name {:#06x} ({})", texturePackHeader->FilenameHash, texturePackHeader->Name);
+		}
+		break;
+
+		case ENFSChunkId::TPK_InfoPart2: {
+			TextureIndexEntry* textureIndexEntry = (TextureIndexEntry*)(nextChunk + 1);
+			textureIndexesCount = (nextChunk->Size / sizeof(TextureIndexEntry));
+			for (std::uint32_t i = 0; i < textureIndexesCount; i++) {
+				dbg::Verbose("        Found entry hash {:#06x} (padding: {})", textureIndexEntry->NameHash, textureIndexEntry->Padding);
+				hashesStorage.insert(textureIndexEntry->NameHash);
+				textureIndexEntry++;
+			}
+
+		}
+		break;
+
+		case ENFSChunkId::TPK_InfoPart3: {
+			StreamingEntry* streamingEntry = (StreamingEntry*)(nextChunk + 1);
+			for (std::uint32_t i = 0; i < (nextChunk->Size / sizeof(StreamingEntry)); i++) {
+				dbg::Verbose("        Found streaming entry {:#06x}", streamingEntry->NameHash);
+				streamingEntry++;
+			}
+		}
+		break;
+
+		case ENFSChunkId::TPK_InfoPart4: {
+			textureInfo = (TextureInfo*)(nextChunk + 1);;
+			texturesInfo.reserve(textureIndexesCount);
+			for (std::uint32_t i = 0; i < textureIndexesCount; i++) {
+				if (std::memcmp(textureInfo->BigPadding, verifyBuffer, sizeof(verifyBuffer)) != 0) {
+					dbg::Warning("Something wrong with BigPadding!!! Couldn't process this chunk anymore (i - {})", i);
+					break;
 				}
 
+				dbg::Verbose("        Found texture info {:#06x} ({})", textureInfo->NameHash, textureInfo->DebugName);
+				texturesInfo.emplace_back(*textureInfo);
+				textureInfo = (TextureInfo*)((char*)textureInfo + textureInfo->DebugNameSize + 89);
 			}
+		}
+		break;
+
+		case ENFSChunkId::TPK_InfoPart5: {
+			TexturePlatInfo* texturePlatInfoEntry = (TexturePlatInfo*)(nextChunk + 1);
+			std::memcpy(&outPlatInfo, texturePlatInfoEntry, sizeof(TexturePlatInfo));
+
+			const std::string_view& formatName = (TexturesFormatMap.find(texturePlatInfoEntry->format) != TexturesFormatMap.end() ? TexturesFormatMap.at(texturePlatInfoEntry->format) : "");
+			dbg::Verbose("        Found texture plat info (format: {})", formatName);
+			texturesInfoCount = nextChunk->Size / 32 /* #TODO: check this one */;
+		}
+		break;
+
+		case ENFSChunkId::TPK_BinData: {
+			animChunk = nextChunk;
+		}
+		break;
+
+		default:
 			break;
-
-			case ENFSChunkId::TPK_InfoPart3: {
-				StreamingEntry* streamingEntry = (StreamingEntry*)(nextChunk + 1);
-				for (std::uint32_t i = 0; i < (nextChunk->Size / sizeof(StreamingEntry)); i++) {
-					dbg::Log("        Found streaming entry {:#06x}", streamingEntry->NameHash);
-					streamingEntry++;
-				}
-			}
-			break;
-
-			case ENFSChunkId::TPK_InfoPart4: {
-				textureInfo = (TextureInfo*)(nextChunk + 1);;
-				texturesInfo.reserve(textureIndexesCount);
-				for (std::uint32_t i = 0; i < textureIndexesCount; i++) {
-					if (std::memcmp(textureInfo->BigPadding, verifyBuffer, sizeof(verifyBuffer)) != 0) {
-						dbg::Warning("Something wrong with BigPadding!!! Can't process this chunk anymore (i - {})", i);
-						break;
-					}
-
-					dbg::Log("        Found texture info {:#06x} ({})", textureInfo->NameHash, textureInfo->DebugName);
-					texturesInfo.emplace_back(*textureInfo);
-					textureInfo = (TextureInfo*)((char*)textureInfo + textureInfo->DebugNameSize + 89);
-				}
-			}
-			break;
-
-			case ENFSChunkId::TPK_InfoPart5: {
-				TexturePlatInfo* texturePlatInfoEntry = (TexturePlatInfo*)(nextChunk + 1);
-				std::memcpy(&outPlatInfo, texturePlatInfoEntry, sizeof(TexturePlatInfo));
-
-				const std::string_view& formatName = (TexturesFormatMap.find(texturePlatInfoEntry->format) != TexturesFormatMap.end() ? TexturesFormatMap.at(texturePlatInfoEntry->format) : "");
-				dbg::Log("        Found texture plat info (format: {})", formatName);
-				texturesInfoCount = nextChunk->Size / 32 /* #TODO: check this one */;
-			}
-			break;
-
-			case ENFSChunkId::TPK_BinData: {
-				animChunk = nextChunk;
-			}
-			break;
-
-			default:
-				break;
-			}
 		}
 
 		nextChunk = (aChunk*)((char*)nextChunk + nextChunk->Size + 8);
@@ -141,7 +189,8 @@ bool ProcessTexturePackHeaderChunk(aChunk* chunkData, TexturePackHeader& outHead
 	return true;
 }
 
-aChunk* ProcessTexturePackDataChunk(aChunk* chunkData)
+aChunk*
+ProcessTexturePackDataChunk(aChunk* chunkData)
 {
 	aChunk* nextChunk = chunkData + 1;
 	aChunk* nextNextChunk = chunkData + 2;
@@ -155,11 +204,12 @@ aChunk* ProcessTexturePackDataChunk(aChunk* chunkData)
 		vramHeader->EndianSwapped = 0;
 	}
 
-	dbg::Log("        Found data chunk {:#06x}", vramHeader->FilenameHash);
+	dbg::Verbose("        Found data chunk {:#06x}", vramHeader->FilenameHash);
 	return dataChunk;
 }
 
-bool ProcessTexturePackChunk(aChunk* chunkData)
+bool
+ProcessTexturePackChunk(aChunk* chunkData)
 {	
 	const bool isXenonPlatform = true;
 
@@ -182,16 +232,12 @@ bool ProcessTexturePackChunk(aChunk* chunkData)
 
 			nextChunk = (aChunk*)((char*)nextChunk + nextChunk->Size + sizeof(aChunk));
 		}
-
-		if (false /* not enough space*/) {
-			return false;
-		}
 	} else if (chunkId == ENFSChunkId::TPK_DataBlock) {
 		dataChunk = ProcessTexturePackDataChunk(chunkData);
 	}
 
 	if (texturePackHeader.FilenameHash == 0) {
-		dbg::Log("Procedeed to the empty chunk. Skipping the chunk");
+		dbg::Verbose("Procedeed to the empty chunk. Skipping the chunk");
 		return true;
 	}
 
@@ -209,7 +255,7 @@ bool ProcessTexturePackChunk(aChunk* chunkData)
 		alignedSize -= 4;
 	}
 
-	dbg::Log("    Processing textures in TPK block...");
+	dbg::Verbose("    Processing textures in TPK block...");
 	for (int32_t i = 0; i < texturesInfo.size(); i++) {
 		const TextureInfo& textureInfo = texturesInfo[i];
 		ENFSTextureFormat texFormat = GetNFSFormatFromCompressionType(textureInfo.ImageCompressionType);
@@ -227,7 +273,7 @@ bool ProcessTexturePackChunk(aChunk* chunkData)
             continue;
         }
 
-		dbg::Log("        Loading {} ({}x{}, {}KB, {} mips, {} format)... ",
+		dbg::Verbose("        Loading {} ({}x{}, {}KB, {} mips, {} format)... ",
 			textureName,
 			textureInfo.Width,
 			textureInfo.Height,
@@ -250,23 +296,10 @@ bool ProcessTexturePackChunk(aChunk* chunkData)
 
 			const char* mipDataPtr = texturePackedData;
 			char* mipPCDataPtr = pcData.data();
-			if (!TextureConverter::UntileXenonTexture(textureInfo.Width, textureInfo.Height, blockSize, mipDataPtr, mipPCDataPtr)) {
-				dbg::Warning("Can't convert {} texture from Xenon to PC format.", textureInfo.DebugName);
+			if (!TextureConverter::UntileXenonTexture(textureInfo.Width, textureInfo.Height, textureInfo.NumMipMapLevels, blockSize, mipDataPtr, mipPCDataPtr)) {
+				dbg::Warning("Couldn't convert {} texture from Xenon to PC format.", textureInfo.DebugName);
 				return false;
 			}
-			/*
-			for (std::uint32_t mip = 0; mip < textureInfo.NumMipMapLevels; mip++) {
-				const std::int32_t textureAlign = 128;
-				const std::uint32_t mipWidth = textureInfo.Width / (mip + 1);
-				const std::uint32_t mipHeight = textureInfo.Height / (mip + 1);
-				const std::uint32_t mipAlignedSize = ALIGN_VALUE(mipWidth, textureAlign) * ALIGN_VALUE(mipHeight, 4) / 16 * blockSize;
-				const std::uint32_t mipSize = mipWidth * mipHeight / 16 * blockSize;
-
-
-				mipDataPtr += mipSize;
-				mipPCDataPtr += mipSize;
-			}
-			*/
 		}
         
 		nfr::api::path outFileDDSPath = EngineFactory->getResourcesDirectory();
@@ -282,7 +315,7 @@ bool ProcessTexturePackChunk(aChunk* chunkData)
 
 		nfr::api::SafeInterface<nfr::api::IStream> ddsStream = EngineFactory->openFile(nfr::api::EStreamFlags::WriteFlag, outFileDDSPath);
 		if (!ddsStream->isOpen()) {
-			dbg::Warning("Can't create raw file {}. Skipping the file...", ddsFileName);
+			dbg::Warning("Couldn't create raw file {}. Skipping the file...", ddsFileName);
 			continue;
 		}
         
@@ -294,23 +327,27 @@ bool ProcessTexturePackChunk(aChunk* chunkData)
 	return true;
 }
 
-void NotifyLoadSolidList(SolidListHeader* solidHeader)
+void 
+NotifyLoadSolidList(SolidListHeader* solidHeader)
 {
 
 }
 
-SolidListHeader* ProcessSolidListHeaderChunk(aChunk* chunkData)
+SolidListHeader* 
+ProcessSolidListHeaderChunk(aChunk* chunkData)
 {
 	SolidListHeader* foundHeader = nullptr;
 	return foundHeader;
 }
 
-void ProcessSolidListDataChunk(aChunk* chunkData, SolidListHeader* solidHeader)
+void 
+ProcessSolidListDataChunk(aChunk* chunkData, SolidListHeader* solidHeader)
 {
 
 }
 
-bool ProcessSolidListChunk(aChunk* chunkData)
+bool 
+ProcessSolidListChunk(aChunk* chunkData)
 {
 	ENFSChunkId chunkEnumId = static_cast<ENFSChunkId>(chunkData->Id);
 	if (chunkEnumId != ENFSChunkId::Geometry) {
@@ -327,8 +364,7 @@ bool ProcessSolidListChunk(aChunk* chunkData)
 			}
 
 			solidHeader = ProcessSolidListHeaderChunk(nextChunk);
-		}
-		else if (nextChunk->Id == static_cast<std::uint32_t>(ENFSChunkId::GeometryData)) {
+		} else if (nextChunk->Id == static_cast<std::uint32_t>(ENFSChunkId::GeometryData)) {
 			ProcessSolidListDataChunk(nextChunk, solidHeader);
 		}
 
@@ -338,54 +374,8 @@ bool ProcessSolidListChunk(aChunk* chunkData)
 	return true;
 }
 
-#define MAX_FONT_STATES 24
-
-struct OldEngineFont
-{
-	char Signature[4];
-	std::uint32_t Size;
-	std::uint16_t Version;
-	std::uint16_t Num;
-	std::int32_t Flags;
-	std::int8_t CenterX;
-	std::int8_t CenterY;
-	std::uint8_t Ascent;
-	std::uint8_t Descent;
-	std::int32_t GlyphTbl;
-	std::int32_t KernTbl;
-	std::int32_t Shape;
-	std::int32_t States[MAX_FONT_STATES];
-
-	void EndianSwap()
-	{
-		Size = BYTESWAP_LONG(Size);
-		Version = BYTESWAP_SHORT(Version);
-		Num = BYTESWAP_SHORT(Num);
-		Flags = BYTESWAP_SHORT(Flags);
-		GlyphTbl = BYTESWAP_LONG(GlyphTbl);
-		KernTbl = BYTESWAP_LONG(KernTbl);
-		Shape = BYTESWAP_LONG(Shape);
-		for (std::int32_t& state : States) {
-			state = BYTESWAP_LONG(state);
-		}
-	}
-};
-
-struct EngineFont
-{
-	char FontName[256];
-	char TextureName[256];
-	OldEngineFont Font;
-};
-
-struct FontDescription
-{
-	std::string Name;
-	std::string TextureName;
-	std::int32_t Height;
-};
-
-bool ProcessEngineFontChunk(aChunk* chunkData)
+bool
+ProcessEngineFontChunk(aChunk* chunkData)
 {
 	const bool isXenonPlatform = true;
 
@@ -399,11 +389,12 @@ bool ProcessEngineFontChunk(aChunk* chunkData)
 	fontDescription.TextureName = fontData->TextureName;
 	fontDescription.Height = static_cast<float>(fontData->Font.States[1]);
 
-	dbg::Log("    Found \"{}\" font with {} height", fontDescription.Name, fontDescription.Height);
+	dbg::Verbose("    Found \"{}\" font with {} height", fontDescription.Name, fontDescription.Height);
 	return true;
 }
 
-void* GetDataFrontendPackageChunk(aChunk* chunkData)
+void* 
+GetDataFrontendPackageChunk(aChunk* chunkData)
 {
 	ENFSChunkId chunkId = static_cast<ENFSChunkId>(chunkData->Id);
 	if (chunkId == ENFSChunkId::FEPackage) {
@@ -413,162 +404,80 @@ void* GetDataFrontendPackageChunk(aChunk* chunkData)
 	return nullptr;
 }
 
-std::string GetFrontendPackageName(aChunk* chunkData)
+std::pair<std::uint32_t, std::string>
+GetFrontendPackageName(aChunk* chunkData)
 {
 	char* dataChunk = chunkData->getDataPtr();
 	ENFSChunkId chunkId = static_cast<ENFSChunkId>(chunkData->Id);
-
-	// "DiscError.fng"
-	// "FeMainMenu.fng"
-	// "Loading.fng"
-
-	// PkHd
 	if (chunkId == ENFSChunkId::FEPackage) {
 		std::uint32_t magicWord = *(std::uint32_t*)dataChunk;
 		if (magicWord == 0xE76E4546 || magicWord == 0x64486B50 || magicWord >= 0x20000) {
 			const char* packageName = dataChunk + 40;
-			return packageName;
+			return { nfr::api::getBinaryUpperHash(packageName), packageName};
 		}
 	} else if (chunkId == ENFSChunkId::FNGCompress) {
-		//aChunk* nextChunk = chunkData + 1;
-		//return nextChunk->Id;
+		aChunk* nextChunk = chunkData + 1;
+		if (EntriesMap.find(nextChunk->Id) != EntriesMap.end()) {
+			return { nextChunk->Id, EntriesMap.at(nextChunk->Id) };
+		}
+
+		dbg::Warning("Couldn't find string for hash {:#06x}. Skipping name of this one...", nextChunk->Id);
+		return { nextChunk->Id, ""};
 	}
 
-	return "";
+	dbg::Warning("Invalid chunk has passed to this function...");
+	return { 0xFFFFFFFF, "" };
 }
 
-struct FrontendPackage
+bool
+ProcessFrontendPackageChunk(aChunk* chunkData)
 {
-	std::string Name;
-	std::vector<char> Data;
-};
-
-bool ProcessFrontendPackageChunk(aChunk* chunkData)
-{
-    return true;
-	aChunk* dataChunk = chunkData + 1;
+	aChunk* dataChunk = chunkData;
+	aChunk* nextChunk = dataChunk + 1;
 	ENFSChunkId chunkId = static_cast<ENFSChunkId>(chunkData->Id);
 
-	if (chunkId == ENFSChunkId::FEPackage) {
-		while (static_cast<ENFSChunkId>(dataChunk->Id) == ENFSChunkId::FNGCompress) {
-			dataChunk = dataChunk + 1;
-		}
+	if (chunkId == ENFSChunkId::FEPackage && nextChunk->Size <= dataChunk->Size) {
+		dataChunk = dataChunk + 1;
+		nextChunk = dataChunk + 1;
+	}
+
+	if (chunkId == ENFSChunkId::FNGCompress && nextChunk->Size <= dataChunk->Size) {
+		dataChunk = dataChunk + 1;
 	}
 
 	FrontendPackage frontendPackage = {};
-	frontendPackage.Name = GetFrontendPackageName(chunkData);
+	auto packageNamePair = GetFrontendPackageName(chunkData);
+	frontendPackage.Hash = packageNamePair.first;
+	frontendPackage.Name = packageNamePair.second;
 	frontendPackage.Data.resize(dataChunk->Size);
 	std::memcpy(frontendPackage.Data.data(), dataChunk->getDataPtr(), dataChunk->Size);
 
-	dbg::Log("    Found \"{}\" frontend package with hash {:#06x} and {} size.",
-		frontendPackage.Name, 
-		nfr::api::getBinaryUpperHash(frontendPackage.Name.c_str()),
-		frontendPackage.Data.size()
-	);
-
-	return true;
-}
-enum class QuickSplineEndPointType : std::int32_t
-{
-	Loop,
-	Line,
-	Extrapolated
-};
-
-enum class QuickSplineBasisType : std::int32_t
-{
-	Overhauser
-};
-
-struct QuickSpline
-{
-	std::uint32_t Hash;
-	QuickSplineEndPointType EndPointType;
-	QuickSplineBasisType BasisType;
-	float MaxParam;
-	float MinParam;
-	float Length;
-	std::int8_t ControlPointsDirty;
-	std::int8_t BufferWasAllocated;
-	std::int8_t MinControlPoints;
-	std::uint16_t MaxControlPoints;
-	std::uint16_t NumControlPoints;
-};
-
-std::uint32_t GetDecompressedJDLZSize(bool isLittleEndian, char* input)
-{
-	std::uint32_t outputLength = *(std::uint32_t*)(input + 8);
-	if (!isLittleEndian) {
-		outputLength = BYTESWAP_LONG(outputLength);
+	if (frontendPackage.Name.empty()) {
+		dbg::Verbose("    Found frontend package with hash {:#06x} and {} size.",
+			frontendPackage.Hash,
+			frontendPackage.Data.size()
+		);
+	} else {
+		dbg::Verbose("    Found \"{}\" frontend package with hash {:#06x} and {} size.",
+			frontendPackage.Name, 
+			frontendPackage.Hash,
+			frontendPackage.Data.size()
+		);
 	}
 
-	return outputLength;
+	FEPackages.emplace(std::make_pair(frontendPackage.Hash, std::move(frontendPackage)));
+	return true;
 }
 
-struct JLZPackHeader
-{
-    char MagicWord[4];
-    char FirstFlag;
-    char SecondFlag;
-    char Padding[2];
-    std::uint32_t UncompressedSize;
-    std::uint32_t CompressedSize;
-};
-
-void JLDZ_Decompress(std::uint8_t* input, std::uint8_t* output)
-{
-    int flags1 = 1, flags2 = 1;
-    int t = 0, length = 0;
-    int inPos = 16, outPos = 0;
-    
-    JLZPackHeader* dataHeader = reinterpret_cast<JLZPackHeader*>(input);
-    int inputLength = dataHeader->CompressedSize;
-    int outputLength = dataHeader->UncompressedSize;
-
-    while ((inPos < inputLength) && (outPos < outputLength))
-    {
-        if (flags1 == 1) {
-            flags1 = input[inPos++] | 0x100;
-        }
-        
-        if (flags2 == 1) {
-            flags2 = input[inPos++] | 0x100;
-        }
-
-        if ((flags1 & 1) == 1) {
-            if((flags2 & 1) == 1 ) {
-                length = ( input[inPos + 1] | ( ( input[inPos] & 0xF0 ) << 4 ) ) + 3;
-                t = ( input[inPos] & 0x0F ) + 1;
-            } else {
-                t = ( input[inPos + 1] | ( ( input[inPos] & 0xE0 ) << 3 ) ) + 17;
-                length = ( input[inPos] & 0x1F ) + 3;
-            }
-
-            inPos += 2;
-            for (int i = 0; i < length; ++i) {
-                output[outPos + i] = output[outPos + i - t];
-            }
-
-            outPos += length;
-            flags2 >>= 1;
-        } else {
-            if (outPos < outputLength) {
-                output[outPos++] = input[inPos++];
-            }
-        }
-        
-        flags1 >>= 1;
-    }
-}
-
-bool ProcessQuickSplineChunk(aChunk* chunkData)
+bool 
+ProcessQuickSplineChunk(aChunk* chunkData)
 {
 	aChunk* nextChunk = chunkData + 1;
 	aChunk* lastChunk = (aChunk*)((char*)chunkData + chunkData->Size + sizeof(aChunk));
 	QuickSpline* spline = reinterpret_cast<QuickSpline*>(nextChunk->getDataPtr() + 16);
 
 	// #TODO: rework this shit
-	dbg::Log("    Found \"{}\" spline with {} size ({} -> {})",
+	dbg::Verbose("    Found \"{}\" spline with {} size ({} -> {})",
 		spline->Hash,
 		spline->Length,
 		spline->MinParam,
@@ -579,17 +488,175 @@ bool ProcessQuickSplineChunk(aChunk* chunkData)
 		nextChunk = (aChunk*)((char*)nextChunk + nextChunk->Size + sizeof(aChunk));
 	}
 
+	return true;
+}
+
+bool 
+ProcessMaterialsChunk(aChunk* chunkData)
+{
+	MaterialStruct* material = reinterpret_cast<MaterialStruct*>(chunkData->getDataPtr());
+	dbg::Verbose("    Found {}\"{}\" material with hash {:#06x} and version {}",
+		material->NameHash == 0x2C420D64 ? "default " : "",
+		material->Name,
+		material->NameHash,
+		material->Version
+	);
+
+	MaterialsMap.emplace(std::make_pair(material->NameHash, material->Data));
+	return true;
+}
+
+bool
+ProcessLightsChunk(aChunk* chunkData)
+{
+	EngineLightPack* engineLight = nullptr;
+	aChunk* nextChunk = chunkData + 1;
+	aChunk* lastChunk = (aChunk*)((char*)chunkData + chunkData->Size + sizeof(aChunk));
+	while (nextChunk != lastChunk) {
+		switch (static_cast<ENFSChunkId>(nextChunk->Id)) {
+			case ENFSChunkId::LightPack: {
+				LightPack* lightPack = nextChunk->getDataPtr<LightPack>();
+				if (GameVersion == EGameVersion::ProStreetXenon || GameVersion == EGameVersion::ProStreetPC) {
+					if (lightPack->Version != 4) {
+						dbg::Error("Invalid version of the light pack (in {}, required {})", lightPack->Version, 4);
+						return false;
+					}
+				}
+
+				dbg::Verbose("    Found light pack ({} lights, {} tree nodes)", lightPack->NumLights, lightPack->NumTreeNodes);
+				engineLight = &EngineLightsMap.emplace_back(std::move(
+					EngineLightPack(lightPack->ScenerySectionNumber, lightPack->NumTreeNodes, lightPack->NumLights)
+				));
+			}
+			break;
+			case ENFSChunkId::AABBTree: {
+				AABBTree* aabbTree = nextChunk->getDataPtr<AABBTree>();
+				dbg::Verbose("    Found AABB tree ({} leaf nodes, {} parent nodes)", aabbTree->NumLeafNodes, aabbTree->NumParentNodes);
+				engineLight->aabb.Depth = aabbTree->Depth;
+				engineLight->aabb.TotalNodes = aabbTree->TotalNodes;
+				engineLight->aabb.NumParentNodes = aabbTree->NumParentNodes;
+				engineLight->aabb.NumLeafNodes = aabbTree->NumLeafNodes;
+			}
+			break;
+			case ENFSChunkId::LightArray: {
+				GameLight* gameLight = nextChunk->getDataPtr<GameLight>();
+				dbg::Verbose("    Found \"{}\" game light with hash {:#06x}", gameLight->Name, gameLight->NameHash);
+				LightsMap.emplace(std::move(std::make_pair(gameLight->NameHash, *gameLight)));
+			}
+			break;
+		default:
+			break;
+		}
+		nextChunk = (aChunk*)((char*)nextChunk + nextChunk->Size + sizeof(aChunk));
+	}
 
 	return true;
 }
 
-bool ProcessChunk(aChunk* chunkData)
+bool
+ProcessPCAWeightsChunk(aChunk* chunkData)
+{
+	ePcaWeights* weights = nullptr;
+	aChunk* nextChunk = chunkData + 1;
+	aChunk* lastChunk = (aChunk*)((char*)chunkData + chunkData->Size + sizeof(aChunk));
+	while (nextChunk != lastChunk) {
+		switch (static_cast<ENFSChunkId>(nextChunk->Id)) {
+		case ENFSChunkId::PCAWeightsData: {
+			weights = nextChunk->getDataPtr<ePcaWeights>();
+			if (EntriesMap.find(weights->NameHash) != EntriesMap.end()) {
+				dbg::Verbose("    Found PCA weights data \"{}\" with hash {:#06x}", EntriesMap.at(weights->NameHash), weights->NameHash);
+			} else {
+				dbg::Verbose("    Found PCA weights data with hash {:#06x}", weights->NameHash);
+			}
+		}
+		break;
+		case ENFSChunkId::PCAMeanData:
+
+			break;
+		case ENFSChunkId::PCAFramesData:
+
+			break;
+		default:
+			break;
+		}
+
+		nextChunk = (aChunk*)((char*)nextChunk + nextChunk->Size + sizeof(aChunk));
+	}
+
+	return true;
+}
+
+bool
+ProcessEventSysData(char* data, std::uint32_t dataSize)
+{
+	if (std::memcmp(data, "CARP", 4) != 0) {
+		return false;
+	}
+
+	//EventSysPipeGroup* eventSys = reinterpret_cast<EventSysPipeGroup*>(data);
+	data += 16;
+	if (std::memcmp(data, "Strs", 4) != 0) {
+		return false;
+	}
+
+	return true;
+}
+
+bool 
+ProcessEventSequenceChunk(aChunk* chunkData)
+{
+	aChunk* nextChunk = chunkData + 1;
+	aChunk* lastChunk = (aChunk*)((char*)chunkData + chunkData->Size + sizeof(aChunk));
+	while (nextChunk != lastChunk) {
+		if (!ProcessEventSysData(nextChunk->getDataPtr() + 24, nextChunk->Size)) {
+			return false;
+		}
+
+		dbg::Verbose("    Found event sequence.");
+		nextChunk = (aChunk*)((char*)nextChunk + nextChunk->Size + sizeof(aChunk));
+	}
+
+	return true;
+}
+
+bool
+ProcessCarTypesInfosChunk(aChunk* chunkData)
+{
+	CarTypeInfo* carTypeInfo = chunkData->getAlignedPtr<CarTypeInfo>(0x10);
+	dbg::Verbose("    Found car type info \"{}\" for \"{}\" model.", carTypeInfo->CarTypeName, carTypeInfo->BaseModelName);
+	return true;
+}
+
+bool
+ProcessChunk(aChunk* chunkData)
 {
     bool result = false;
-	const std::string_view& chunkName = (NfsChunkIdMap.find(chunkData->Id) != NfsChunkIdMap.end() ? NfsChunkIdMap.at(chunkData->Id) : "Unknown chunk");
+	const char* chunkName = (NfsChunkIdMap.find(chunkData->Id) != NfsChunkIdMap.end() ? NfsChunkIdMap.at(chunkData->Id).data() : "Unknown chunk");
 	
 	ENFSChunkId chunkEnumId = static_cast<ENFSChunkId>(chunkData->Id);
+	dbg::Verbose("");
+	dbg::Verbose("[\"{}\"]:", chunkName);
+	dbg::Verbose("--------------------------------------------------");
 	switch (chunkEnumId) {
+	case ENFSChunkId::CarTypeInfos:
+		result = ProcessCarTypesInfosChunk(chunkData);
+		break;
+	case ENFSChunkId::EventSequence:
+		result = ProcessEventSequenceChunk(chunkData);
+		break;
+	case ENFSChunkId::PCAWeights:
+		result = ProcessPCAWeightsChunk(chunkData);
+		break;
+	case ENFSChunkId::FEPackage:
+	case ENFSChunkId::FNGCompress:
+		result = ProcessFrontendPackageChunk(chunkData);
+		break;
+	case ENFSChunkId::ELights:
+		result = ProcessLightsChunk(chunkData);
+		break;
+	case ENFSChunkId::Materials:
+		result = ProcessMaterialsChunk(chunkData);
+		break;
 	case ENFSChunkId::TPK_Blocks:
 	case ENFSChunkId::TPK_DataBlock:
 		result = ProcessTexturePackChunk(chunkData);
@@ -600,24 +667,23 @@ bool ProcessChunk(aChunk* chunkData)
 	case ENFSChunkId::QuickSpline:
 		result = ProcessQuickSplineChunk(chunkData);
         break;
-	case ENFSChunkId::Geometry:
-		result = ProcessSolidListChunk(chunkData);
-        break;
 	default:
-		break;
+		dbg::Error("Can't process unknown chunk {:#06x} (\"{}\"). Skipping chunk...", chunkData->Id,chunkName);
+		dbg::Verbose("--------------------------------------------------");
+		return false;
 	}
-    
+
     if (!result) {
-        dbg::Warning("Can't process chunk \"{}\" ({:#06x}). Skipping chunk...", chunkName, chunkData->Id);
-    } else {
-        dbg::Log("Processed chunk \"{}\" ({:#06x})", chunkName, chunkData->Id);
+        dbg::Error("Can't process chunk {:#06x} (\"{}\"). Skipping chunk...", chunkData->Id, chunkName);
     }
+
+	dbg::Verbose("--------------------------------------------------");
     
 	return result;
 }
 
-
-nfr::api::IStream* OpenFile(const char* filePath)
+nfr::api::IStream* 
+OpenFile(const char* filePath)
 {
 	nfr::api::path globalFile = EngineFactory->getGameDirectory();
     globalFile.append(filePath);
@@ -629,24 +695,10 @@ nfr::api::IStream* OpenFile(const char* filePath)
     return EngineFactory->openFile(nfr::api::EStreamFlags::ReadFlag, globalFile);
 }
 
-struct CIPHeader
-{
-    int Magic;
-    int USize;
-    int CSize;
-    int UPos;
-    int CPos;
-    char UnusedPadding[4];
-};
-
-bool ProcessChunkedFile(nfr::api::IStream* globalStream)
+bool 
+ProcessChunkedFile(nfr::api::IStream* globalStream)
 {
     std::vector<char> unpackedDataBuffer;
-
-    bool isPackedData = false;
-    std::uint32_t magicWord = 0;
-    globalStream->read(&magicWord, sizeof(std::uint32_t));
-    globalStream->seek(nfr::api::EStreamMode::Set, 0);
 
     while (!globalStream->isEndOfFile()) {
         aChunk chunk = {};
@@ -661,23 +713,23 @@ bool ProcessChunkedFile(nfr::api::IStream* globalStream)
         }
 
         unpackedDataBuffer.resize(std::max(unpackedDataBuffer.size(), std::size_t(chunk.Size + sizeof(aChunk))));
-        std::fill(unpackedDataBuffer.begin(), unpackedDataBuffer.end(), 0);
+		std::memset(unpackedDataBuffer.data(), 0, unpackedDataBuffer.size());
 
         globalStream->read(unpackedDataBuffer.data() + sizeof(aChunk), chunk.Size);
         std::memcpy(unpackedDataBuffer.data(), &chunk, sizeof(aChunk));
 
-        aChunk* chunkPtr = reinterpret_cast<aChunk*>(unpackedDataBuffer.data());
-        if (!ProcessChunk(chunkPtr)) {
+        if (!ProcessChunk(reinterpret_cast<aChunk*>(unpackedDataBuffer.data()))) {
             continue;
         }
     }
 
     dbg::Log("All chunks are processed.");
-    dbg::Log("");
+    dbg::Verbose("");
     return true;
 }
 
-bool ProcessCompressedFile(nfr::api::IStream* compressedFile, std::vector<std::uint8_t>& decompressedData)
+bool
+ProcessCompressedFile(nfr::api::IStream* compressedFile, std::vector<std::uint8_t>& decompressedData)
 {
     std::vector<std::uint8_t> compressedData;
     
@@ -706,13 +758,12 @@ bool ProcessCompressedFile(nfr::api::IStream* compressedFile, std::vector<std::u
         return false;
     }
     
-    dbg::Log("Found JLZ header (u - {}KB, c - {}KB)", packHeader->UncompressedSize / 1024, packHeader->CompressedSize / 1024);
-    dbg::Log("Processing file decompression...");
+    dbg::Verbose("Found JLZ header (u - {}KB, c - {}KB)", packHeader->UncompressedSize / 1024, packHeader->CompressedSize / 1024);
+    dbg::Verbose("Processing file decompression...");
     
     decompressedData.resize(packHeader->UncompressedSize);
-    //JLZDecompress(compressedData.data(), decompressedData.data());
-    JLDZ_Decompress(compressedData.data(), decompressedData.data());
-    dbg::Log("File decompressed successfully. Trying to parse chunks inside...");
+	JLZDecompress(compressedData.data(), decompressedData.data(), packHeader->CompressedSize, packHeader->UncompressedSize);
+    dbg::Verbose("File decompressed successfully. Trying to parse chunks inside...");
     
     std::uint32_t offset = 0;
     while (offset < decompressedData.size()) {
@@ -730,7 +781,8 @@ bool ProcessCompressedFile(nfr::api::IStream* compressedFile, std::vector<std::u
     return true;
 }
 
-bool LoadCompressedFile(const char* filePath, bool saveUncompressedFile)
+bool
+LoadCompressedFile(const char* filePath, bool saveUncompressedFile)
 {
     std::vector<std::uint8_t> uncompressedData;
 	nfr::api::SafeInterface<nfr::api::IStream> compressedFile = OpenFile(filePath);
@@ -741,7 +793,7 @@ bool LoadCompressedFile(const char* filePath, bool saveUncompressedFile)
     
     dbg::Log("Processing \"{}\" file...", filePath);
     if (!ProcessCompressedFile(compressedFile.get(), uncompressedData)) {
-        dbg::Error("Can't decompress \"{}\" file. Aborting...", filePath);
+        dbg::Error("Couldn't decompress \"{}\" file. Aborting...", filePath);
         return false;
     }
     
@@ -765,7 +817,8 @@ bool LoadCompressedFile(const char* filePath, bool saveUncompressedFile)
     return true;
 }
 
-bool LoadChunkedFile(const char* filePath)
+bool 
+LoadChunkedFile(const char* filePath)
 {
 	nfr::api::SafeInterface<nfr::api::IStream> globalStream = OpenFile(filePath);
 	if (!globalStream->isOpen()) {

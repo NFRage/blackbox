@@ -19,9 +19,6 @@
 *****************************************************************/
 #pragma once
 
-/*
- * ddsCaps field is valid.
- */
 #define DDSD_CAPS               0x00000001l
 #define DDSD_HEIGHT             0x00000002l
 #define DDSD_WIDTH              0x00000004l
@@ -43,12 +40,13 @@
 #define DDSD_SRCVBHANDLE        0x00400000l
 #define DDSD_DEPTH              0x00800000l
 #define DDSD_ALL                0x00fff9eel
-#define DDSCAPS_TEXTURE                         0x00001000l
-#define FOURCC_DXT1       0x31545844
-#define FOURCC_DXT3       0x33545844
-#define FOURCC_DXT5       0x35545844
+#define DDSCAPS_TEXTURE			0x00001000l
+#define FOURCC_DXT1				0x31545844
+#define FOURCC_DXT3				0x33545844
+#define FOURCC_DXT5				0x35545844
 
-struct DDS_PIXELFORMAT {
+struct DDS_PIXELFORMAT 
+{
 	std::uint32_t dwSize;
 	std::uint32_t dwFlags;
 	std::uint32_t dwFourCC;
@@ -59,22 +57,23 @@ struct DDS_PIXELFORMAT {
 	std::uint32_t dwABitMask;
 };
 
-typedef struct {
-	std::uint32_t           dwSize;
-	std::uint32_t           dwFlags;
-	std::uint32_t           dwHeight;
-	std::uint32_t           dwWidth;
-	std::uint32_t           dwPitchOrLinearSize;
-	std::uint32_t           dwDepth;
-	std::uint32_t           dwMipMapCount;
-	std::uint32_t           dwReserved1[11];
+struct DDS_HEADER 
+{
+	std::uint32_t dwSize;
+	std::uint32_t dwFlags;
+	std::uint32_t dwHeight;
+	std::uint32_t dwWidth;
+	std::uint32_t dwPitchOrLinearSize;
+	std::uint32_t dwDepth;
+	std::uint32_t dwMipMapCount;
+	std::uint32_t dwReserved1[11];
 	DDS_PIXELFORMAT ddspf;
-	std::uint32_t           dwCaps;
-	std::uint32_t           dwCaps2;
-	std::uint32_t           dwCaps3;
-	std::uint32_t           dwCaps4;
-	std::uint32_t           dwReserved2;
-} DDS_HEADER;
+	std::uint32_t dwCaps;
+	std::uint32_t dwCaps2;
+	std::uint32_t dwCaps3;
+	std::uint32_t dwCaps4;
+	std::uint32_t dwReserved2;
+};
 
 enum class ENFSTextureFileFormat : std::uint32_t
 {
@@ -160,7 +159,7 @@ struct TextureInformation
 class TextureConverter
 {
 public:
-	static bool UntileXenonTexture(std::int32_t width, std::int32_t height, std::int32_t blockSize, const char* xenonData, char* pcData);
+	static bool UntileXenonTexture(std::int32_t width, std::int32_t height, std::int32_t mipLevels, std::int32_t blockSize, const char* xenonData, char* pcData);
 
 	// rawData - directly loaded texture from DDS file (without decoding)
 	static bool LoadTextureFromDDSFile(nfr::api::IStream* file, std::vector<char>& rawData, TextureInformation& outInformation);

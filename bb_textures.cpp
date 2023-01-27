@@ -35,12 +35,14 @@ namespace bb
 bool
 TextureConverter::UntileXenonTexture(
 	std::int32_t width,
-	std::int32_t height,
+	std::int32_t height, 
+	std::int32_t mipLevels,
 	std::int32_t blockSize,
 	const char* xenonData,
 	char* pcData
 )
 {
+	// #TODO: Untiling for multiple miplevels
 	auto GetXenonTileOffset = [](std::int32_t x, std::int32_t y, std::int32_t width, std::int32_t logBpb) {
 		int alignedWidth = ALIGN_VALUE(width, 32);
 		int macro = ((x >> 5) + (y >> 5) * (alignedWidth >> 5)) << (logBpb + 7);
