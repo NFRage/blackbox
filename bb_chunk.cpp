@@ -198,7 +198,7 @@ ProcessTexturePackDataChunk(aChunk* chunkData)
 	TextureVRAMDataHeader* vramHeader = (TextureVRAMDataHeader*)(nextChunk + 1);
 	int32_t* someBlockSize = (int32_t*)((char*)&nextNextChunk->Size + nextChunk->Size);
 	aChunk* dataChunk = (aChunk*)((((char*)nextChunk + nextChunk->Size) + *someBlockSize) + 16);
-	if (vramHeader->EndianSwapped) {
+	if (!!vramHeader->EndianSwapped) {
 		vramHeader->Version = BYTESWAP_LONG(vramHeader->Version);
 		vramHeader->FilenameHash = BYTESWAP_LONG(vramHeader->FilenameHash);
 		vramHeader->EndianSwapped = 0;
@@ -375,7 +375,7 @@ ProcessSolidListChunk(aChunk* chunkData)
 }
 
 bool
-ProcessEngineFontChunk(aChunk* chunkData)
+ProcessFEFontChunk(aChunk* chunkData)
 {
 	const bool isXenonPlatform = true;
 
@@ -430,7 +430,7 @@ GetFrontendPackageName(aChunk* chunkData)
 }
 
 bool
-ProcessFrontendPackageChunk(aChunk* chunkData)
+ProcessFEPackageChunk(aChunk* chunkData)
 {
 	aChunk* dataChunk = chunkData;
 	aChunk* nextChunk = dataChunk + 1;
@@ -531,6 +531,11 @@ ProcessLightsChunk(aChunk* chunkData)
 			break;
 			case ENFSChunkId::AABBTree: {
 				AABBTree* aabbTree = nextChunk->getDataPtr<AABBTree>();
+				if (engineLight == nullptr) {
+					dbg::Warning("    The engine light is empty. Skipping this chunk.");
+					continue;
+				}
+
 				dbg::Verbose("    Found AABB tree ({} leaf nodes, {} parent nodes)", aabbTree->NumLeafNodes, aabbTree->NumParentNodes);
 				engineLight->aabb.Depth = aabbTree->Depth;
 				engineLight->aabb.TotalNodes = aabbTree->TotalNodes;
@@ -628,6 +633,41 @@ ProcessCarTypesInfosChunk(aChunk* chunkData)
 }
 
 bool
+ProcessCarInfoHookupChunk(aChunk* chunkData)
+{
+	dbg::Verbose("    Found car info hookup.");
+	return true;
+}
+
+bool
+ProcessCarInfoHideupChunk(aChunk* chunkData)
+{
+	dbg::Verbose("    Found car info hideup.");
+	return true;
+}
+
+bool
+ProcessDBCarPartsChunk(aChunk* chunkData)
+{
+
+
+	return true;
+}
+
+bool
+ProcessSlotTypesChunk(aChunk* chunkData)
+{
+	constexpr std::size_t ProStreetTableSize = 21120;
+	const std::uint32_t slotTypeOverridesCount = (chunkData->getSize() - ProStreetTableSize) / sizeof(CarSlotTypeOverride);
+	const char* slotTypesOverrides = chunkData->getDataPtr() + ProStreetTableSize;
+
+
+
+	dbg::Verbose("    Found slot types chunk (overrides : {}).", slotTypeOverridesCount);
+	return true;
+}
+
+bool
 ProcessChunk(aChunk* chunkData)
 {
     bool result = false;
@@ -638,18 +678,25 @@ ProcessChunk(aChunk* chunkData)
 	dbg::Verbose("[\"{}\"]:", chunkName);
 	dbg::Verbose("--------------------------------------------------");
 	switch (chunkEnumId) {
+	case ENFSChunkId::SlotTypes:
+		result = ProcessSlotTypesChunk(chunkData);
+		break;
+	case ENFSChunkId::DBCarParts:
+		break;
 	case ENFSChunkId::CarTypeInfos:
 		result = ProcessCarTypesInfosChunk(chunkData);
+		break;
+	case ENFSChunkId::CarInfoAnimHideup:
+		result = ProcessCarInfoHideupChunk(chunkData);
+		break;
+	case ENFSChunkId::CarInfoAnimHookup:
+		result = ProcessCarInfoHookupChunk(chunkData);
 		break;
 	case ENFSChunkId::EventSequence:
 		result = ProcessEventSequenceChunk(chunkData);
 		break;
 	case ENFSChunkId::PCAWeights:
 		result = ProcessPCAWeightsChunk(chunkData);
-		break;
-	case ENFSChunkId::FEPackage:
-	case ENFSChunkId::FNGCompress:
-		result = ProcessFrontendPackageChunk(chunkData);
 		break;
 	case ENFSChunkId::ELights:
 		result = ProcessLightsChunk(chunkData);
@@ -661,8 +708,12 @@ ProcessChunk(aChunk* chunkData)
 	case ENFSChunkId::TPK_DataBlock:
 		result = ProcessTexturePackChunk(chunkData);
         break;
+	case ENFSChunkId::FEPackage:
+	case ENFSChunkId::FNGCompress:
+		result = ProcessFEPackageChunk(chunkData);
+		break;
 	case ENFSChunkId::FEFont:
-		result = ProcessEngineFontChunk(chunkData);
+		result = ProcessFEFontChunk(chunkData);
         break;
 	case ENFSChunkId::QuickSpline:
 		result = ProcessQuickSplineChunk(chunkData);

@@ -54,9 +54,9 @@ namespace bb
 		case EGameVersion::Carbon:
 			return "Need For Speed Carbon";
 		case EGameVersion::ProStreetXenon:
-			return "Need For Speed ProStreet (PC)";
-		case EGameVersion::ProStreetPC:
 			return "Need For Speed ProStreet (Xbox 360)";
+		case EGameVersion::ProStreetPC:
+			return "Need For Speed ProStreet (PC)";
 		case EGameVersion::Undercover:
 			return "Need For Speed Undercover";
 		case EGameVersion::Nitro:

@@ -33,7 +33,6 @@ bool UnpackXboxData()
 	std::vector<FileHandle> files;
 	std::vector<aFileDirectoryEntry> directoryEntries;
 
-
 	auto ProcessFile = [&files](std::string& inFileName) -> bool {
 #ifdef SPEED_TOOLS
 		auto DecompressXboxData = [](std::vector<std::uint8_t>& compressedBuffer, std::vector<std::uint8_t>& uncompressedBuffer) -> bool {
@@ -78,14 +77,11 @@ bool UnpackXboxData()
 			EBigFilesCompression compressionType = EBigFilesCompression::None;
 			if (!std::memcmp(&headerMagic, "\x0F\xF5\x12\xEE", 4)) {
 				compressionType = EBigFilesCompression::XbCompressNative;
-			}
-			else if (!std::memcmp(&headerMagic, "\xee\x12\xf5\x0f", 4)) {
+			} else if (!std::memcmp(&headerMagic, "\xee\x12\xf5\x0f", 4)) {
 				compressionType = EBigFilesCompression::XbCompressNative;
-			}
-			else if (!std::memcmp(&headerMagic, "\x0F\xF5\x12\xED", 4)) {
+			} else if (!std::memcmp(&headerMagic, "\x0F\xF5\x12\xED", 4)) {
 				compressionType = EBigFilesCompression::XbCompressDecode;
-			}
-			else if (!std::memcmp(&headerMagic, "\xed\x12\xf5\x0f", 4)) {
+			} else if (!std::memcmp(&headerMagic, "\xed\x12\xf5\x0f", 4)) {
 				compressionType = EBigFilesCompression::XbCompressDecode;
 			}
 
@@ -286,8 +282,8 @@ bool UnpackXboxData()
 				continue;
 			}
 
-			std::int64_t fileSize = file.stream->getSize();
-			std::uint32_t localOffset = entry.LocalSectorOffset << 11;
+			const std::int64_t fileSize = file.stream->getSize();
+			const std::uint32_t localOffset = entry.LocalSectorOffset << 11;
 			if (fileSize <= localOffset) {
 				dbg::Warning("THIS IS ILLEGAL!!!");
 				dbg::Warning("File - {}", fileName);
@@ -318,7 +314,7 @@ bool UnpackXboxData()
 
 	std::error_code err;
 	dbg::Log("Cleaning up after unpacking...");
-	for (auto it : std::filesystem::recursive_directory_iterator(EngineFactory->getTempDirectory())) {
+	for (const auto& it : std::filesystem::recursive_directory_iterator(EngineFactory->getTempDirectory())) {
 		std::filesystem::remove(it, err);
 		if (err) {
 			dbg::Warning("Can't remove directory {} ({})", it.path().generic_string(), err.message());
@@ -346,7 +342,7 @@ bool PostInitializePackedDatabase()
 			}
 
 			dbg::Log("Copying to game folder...");
-			for (auto it : std::filesystem::directory_iterator(moviesDir, err)) {
+			for (const auto& it : std::filesystem::directory_iterator(moviesDir, err)) {
 				nfr::api::path newFilePath = newMoviesDir;
 				nfr::api::path fileName = it.path().filename();
 				newFilePath /= fileName;

@@ -362,6 +362,38 @@ struct TextureVRAMDataHeader
 
 #define MAX_FONT_STATES 24
 
+struct CarSlotTypeOverride
+{
+	std::uint32_t CarType;
+	std::uint32_t SlotId;
+	std::uint32_t LookupType[32];
+};
+
+struct CarPartIndex
+{
+	std::int32_t PartIndex;
+	std::int32_t NumParts;
+};
+
+struct CarPartDatabase
+{
+	char ListOffset[8];
+	std::int32_t NumPacks;
+	std::int32_t NumParts;
+	std::int32_t NumBytes;
+	CarPartIndex PaintPart_Gloss[3];
+	CarPartIndex PaintPart_Metallic[3];
+	CarPartIndex PaintPart_Pearl[3];
+	CarPartIndex PaintPart_Vinyl[3];
+	CarPartIndex PaintPart_Rims[3];
+	CarPartIndex PaintPart_Caliper[3];
+	CarPartIndex VinylPart_All[3];
+	CarPartIndex VinylPart_Body[3];
+	CarPartIndex VinylPart_Hood[3];
+	CarPartIndex VinylPart_Side[3];
+	CarPartIndex VinylPart_Manufacturer[3];
+};
+
 struct EventSysPipeGroup
 {
 	std::uint32_t Tag;
