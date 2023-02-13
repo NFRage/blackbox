@@ -17,25 +17,47 @@
 * Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 * Boston, MA 02110-1301 USA
 *****************************************************************/
-#ifdef NFRAGE_TOOLS
-#include <mspack/mspack.h>
-#include <mspack/lzx.h>
-#endif
+#pragma once
 
-#include <spdlog/spdlog.h>
+struct aFileDirectoryEntry
+{
+	std::uint32_t Hash;
+	std::int32_t FileNumber;
+	std::int32_t LocalSectorOffset;
+	std::int32_t TotalSectorOffset;
+	std::int32_t Size;
+	std::uint32_t Checksum;
+};
 
-#include "blackbox.h"
-#include "bb_aware.h"
-#include "bb_compression.h"
-#include "bb_textures.h"
-#include "bb_structs.h"
-#include "bb_chunk.h"
-#include "bb_game.h"
-#include "bb_main.h"
+struct aChunk
+{
+	std::uint32_t Id;
+	std::int32_t Size;
 
-#include "blackbox_instance.h"
+	char* getDataPtr() const
+	{
+		return (char*)this + sizeof(aChunk);
+	}
 
-extern const std::unordered_map<std::uint32_t, std::string_view> NfsChunkIdMap;
-extern const std::unordered_map<std::uint32_t, std::string_view> TexturesFormatMap;
-extern nfr::api::binary_hash_map<std::string> EntriesMap;
-extern bb::EGameVersion GameVersion;
+	template<typename T>
+	T* getDataPtr() const
+	{
+		return (T*)getDataPtr();
+	}
+
+	template<typename T>
+	T* getAlignedPtr(std::ptrdiff_t align) const
+	{
+		return (T*)(((std::ptrdiff_t)getDataPtr() + (align - 1)) & (~(align - 1)));
+	}
+
+	std::size_t getSize() const
+	{
+		return Size;
+	}
+
+	std::size_t getAlignedSize(std::size_t align) const
+	{
+		return (getDataPtr() - getAlignedPtr<char>(align)) + Size;
+	}
+};

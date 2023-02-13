@@ -56,7 +56,7 @@ namespace bb
 {
 
 bool Decompress(void* data, std::uint32_t uncompressedSize, std::uint32_t header, bool bLZ);
-#ifdef SPEED_TOOLS
+#ifdef NFRAGE_TOOLS
 bool DecompressXbox(std::vector<std::uint8_t>& inputData, std::vector<std::uint8_t>& outputData);
 #endif
 

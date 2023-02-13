@@ -19,7 +19,7 @@
 *****************************************************************/
 #include "blackbox_pch.h"
 
-#ifdef SPEED_TOOLS
+#ifdef NFRAGE_TOOLS
 // Thanks UEViewer for code
 struct XboxPackHandle
 {
@@ -114,7 +114,7 @@ bool Decompress(void* data, std::uint32_t uncompressedSize, std::uint32_t header
 
 bool DecompressXbox(std::vector<std::uint8_t>& inputData, std::vector<std::uint8_t>& outputData)
 {
-#ifdef SPEED_TOOLS
+#ifdef NFRAGE_TOOLS
 	// setup streams
 	XboxPackHandle src(inputData);
 	XboxPackHandle dst(outputData);

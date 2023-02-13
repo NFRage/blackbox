@@ -34,7 +34,7 @@ bool UnpackXboxData()
 	std::vector<aFileDirectoryEntry> directoryEntries;
 
 	auto ProcessFile = [&files](std::string& inFileName) -> bool {
-#ifdef SPEED_TOOLS
+#ifdef NFRAGE_TOOLS
 		auto DecompressXboxData = [](std::vector<std::uint8_t>& compressedBuffer, std::vector<std::uint8_t>& uncompressedBuffer) -> bool {
 			if (!DecompressXbox(
 				compressedBuffer,
@@ -106,7 +106,7 @@ bool UnpackXboxData()
 			}
 										   break;
 
-#ifdef SPEED_TOOLS
+#ifdef NFRAGE_TOOLS
 			case EBigFilesCompression::XbCompressNative: {
 				std::vector<char> compressedBuffer;
 				std::vector<char> uncompressedBuffer;

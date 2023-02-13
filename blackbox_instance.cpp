@@ -19,8 +19,7 @@ bool BBGamePluginInstance::initialize()
 		GameLogger = reinterpret_cast<spdlog::logger*>(EngineFactory->getGameLogger());
 	}
 
-	auto createDirectories = [](const char* pathToAppend)
-	{
+	auto createDirectories = [](const char* pathToAppend) {
 		nfr::api::path resourcesDirectory = EngineFactory->getResourcesDirectory();
 		resourcesDirectory.append(pathToAppend);
 		if (!std::filesystem::exists(resourcesDirectory)) {

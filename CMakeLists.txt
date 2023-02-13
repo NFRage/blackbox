@@ -12,7 +12,7 @@ target_link_libraries(blackbox PRIVATE
 )
 
 set_target_properties(blackbox PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${SPEED_ROOT_DIR}/bins/lib/$<0:>"
-    LIBRARY_OUTPUT_DIRECTORY "${SPEED_ROOT_DIR}/bins/lib/$<0:>"
-    RUNTIME_OUTPUT_DIRECTORY "${SPEED_ROOT_DIR}/bins/bin/plugins/$<0:>"
+    ARCHIVE_OUTPUT_DIRECTORY "${NFRAGE_ROOT_DIR}/bins/lib/$<0:>"
+    LIBRARY_OUTPUT_DIRECTORY "${NFRAGE_ROOT_DIR}/bins/lib/$<0:>"
+    RUNTIME_OUTPUT_DIRECTORY "${NFRAGE_ROOT_DIR}/bins/bin/plugins/$<0:>"
 )
