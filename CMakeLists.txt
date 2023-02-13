@@ -9,7 +9,6 @@ target_compile_definitions(blackbox PRIVATE BLACKBOX_EXPORTS)
 target_precompile_headers(blackbox PRIVATE "blackbox_pch.h")
 target_link_libraries(blackbox PRIVATE
     spdlog::spdlog
-    NFR::aware
 )
 
 set_target_properties(blackbox PROPERTIES
